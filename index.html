@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Drawing App with Fill Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        canvas {
+            border: 1px solid #000;
+            cursor: crosshair;
+            touch-action: none; /* Disable browser touch gestures */
+        }
+        button {
+            margin-right: 5px;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .size-slider, .opacity-slider {
+            width: 100px;
+            margin-left: 10px;
+        }
+        .color-picker {
+            margin-left: 10px;
+        }
+        .file-input {
+            display: none;
+        }
+        .file-input-label {
+            background-color: #007BFF;
+            color: #FFF;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .custom-brush-area {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="setMode('line')">Line</button>
+        <button onclick="setMode('square')">Square</button>
+        <button onclick="setMode('circle')">Circle</button>
+        <button onclick="setMode('freehand')">Freehand</button>
+        <button onclick="setMode('chonky')">Chonky Brush</button>
+        <button onclick="setMode('pen')">Pen</button>
+        <button onclick="setMode('pencil')">Pencil</button>
+        <button onclick="setMode('liquify')">Liquify</button>
+        <button onclick="setMode('fill')">Fill</button>
+        <button onclick="undo()">Undo</button>
+        <button onclick="clearCanvas()">Clear Canvas</button>
+        <button onclick="download()">Download</button>
+        <input type="range" min="1" max="20" step="1" value="5" class="size-slider" id="sizeSlider" onchange="setSize(this.value)">
+        <label for="sizeSlider">Size</label>
+        <input type="range" min="0" max="1" step="0.1" value="1" class="opacity-slider" id="opacitySlider" onchange="setOpacity(this.value)">
+        <label for="opacitySlider">Opacity</label>
+        <input type="color" class="color-picker" id="colorPicker" onchange="setColor(this.value)">
+        <label for="colorPicker">Color</label>
+        <input type="file" id="fileInput" class="file-input" accept="image/png, image/jpeg" onchange="uploadImage(event)">
+        <label for="fileInput" class="file-input-label">Upload Image</label>
+    </div>
+    <canvas id="drawingCanvas" width="800" height="600"></canvas>
+    <script>
+        // JavaScript for drawing functionality
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('drawingCanvas');
+            const context = canvas.getContext('2d');
+            let isDrawing = false;
+            let mode = 'freehand'; // Default mode
+            let paths = []; // Store drawn paths for undo
+            let undonePaths = []; // Store undone paths for redo
+            let color = '#000000'; // Default color
+            let opacity = 1; // Default opacity
+            let lineWidth = 5; // Default line width for freehand
+            let startX = 0;
+            let startY = 0;
+
+            // Function to set drawing mode
+            window.setMode = function(shape) {
+                mode = shape;
+            };
+
+            // Function to set drawing color
+            window.setColor = function(newColor) {
+                color = newColor;
+                context.strokeStyle = color; // Update stroke color
+            };
+
+            // Function to set opacity
+            window.setOpacity = function(newOpacity) {
+                opacity = newOpacity;
+                context.globalAlpha = opacity; // Update opacity
+            };
+
+            // Function to set line width
+            window.setSize = function(newSize) {
+                lineWidth = newSize;
+                context.lineWidth = lineWidth; // Update line width
+            };
+
+            // Function to handle mouse and touch events for drawing actions
+            canvas.addEventListener('mousedown', handleStart);
+            canvas.addEventListener('mousemove', handleMove);
+            canvas.addEventListener('mouseup', handleEnd);
+            canvas.addEventListener('mouseleave', handleEnd);
+
+            canvas.addEventListener('touchstart', handleStart);
+            canvas.addEventListener('touchmove', handleMove);
+            canvas.addEventListener('touchend', handleEnd);
+            canvas.addEventListener('touchcancel', handleEnd);
+
+            // Start drawing function for both mouse and touch events
+            function handleStart(e) {
+                e.preventDefault();
+                isDrawing = true;
+                startX = getCoordinateX(e);
+                startY = getCoordinateY(e);
+                context.beginPath();
+                context.moveTo(startX, startY);
+            }
+
+            // Drawing function for both mouse and touch events
+            function handleMove(e) {
+                e.preventDefault();
+                if (isDrawing) {
+                    const x = getCoordinateX(e);
+                    const y = getCoordinateY(e);
+                    switch (mode) {
+                        case 'line':
+                            drawLine(x, y);
+                            break;
+                        case 'square':
+                            drawSquare(x, y);
+                            break;
+                        case 'circle':
+                            drawCircle(x, y);
+                            break;
+                        case 'freehand':
+                            drawFreehand(x, y);
+                            break;
+                        case 'chonky':
+                            drawChonky(x, y);
+                            break;
+                        case 'pen':
+                            drawPen(x, y);
+                            break;
+                        case 'pencil':
+                            drawPencil(x, y);
+                            break;
+                        case 'fill':
+                            fill(x, y, color);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+
+            // End drawing function for both mouse and touch events
+            function handleEnd(e) {
+                e.preventDefault();
+                isDrawing = false;
+                paths.push(context.getImageData(0, 0, canvas.width, canvas.height)); // Store current path for undo
+            }
+
+            // Helper function to get X coordinate from event
+            function getCoordinateX(e) {
+                return e.clientX ? e.clientX - canvas.offsetLeft : e.touches[0].clientX - canvas.offsetLeft;
+            }
+
+            // Helper function to get Y coordinate from event
+            function getCoordinateY(e) {
+                return e.clientY ? e.clientY - canvas.offsetTop : e.touches[0].clientY - canvas.offsetTop;
+            }
+
+            // Drawing functions for different modes
+            function drawLine(x, y) {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                context.beginPath();
+                context.moveTo(startX, startY);
+                context.lineTo(x, y);
+                context.stroke();
+            }
+
+            function drawSquare(x, y) {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                const squareWidth = x - startX;
+                const squareHeight = y - startY;
+                context.strokeRect(startX, startY, squareWidth, squareHeight);
+            }
+
+            function drawCircle(x, y) {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+                context.beginPath();
+                context.arc(startX, startY, radius, 0, 2 * Math.PI);
+                context.stroke();
+            }
+
+            function drawFreehand(x, y) {
+                context.lineTo(x, y);
+                context.stroke();
+            }
+
+            function drawChonky(x, y) {
+                context.lineTo(x, y);
+                context.lineWidth = lineWidth > 10 ? lineWidth : 10; // Ensure a minimum size for Chonky Brush
+                context.stroke();
+            }
+
+            function drawPen(x, y) {
+                context.lineTo(x, y);
+                context.lineWidth = lineWidth > 3 ? lineWidth : 3; // Ensure a minimum size for Pen
+                context.stroke();
+            }
+
+            function drawPencil(x, y) {
+                context.lineTo(x, y);
+                context.lineWidth = lineWidth > 1 ? lineWidth : 1; // Ensure a minimum size for Pencil
+                context.stroke();
+            }
+
+            // Fill tool function
+            function fill(x, y, fillColor) {
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                const pixels = imageData.data;
+                const pixelStack = [{ x: Math.floor(x), y: Math.floor(y) }];
+                const targetColor = getPixelColor(x, y);
+
+                if (targetColor === fillColor) {
+                    return; // Don't fill if target color is the same as fill color
+                }
+
+                while (pixelStack.length) {
+                    const { x, y } = pixelStack.pop();
+                    const currentColor = getPixelColor(x, y);
+
+                    if (currentColor === targetColor) {
+                        setPixelColor({ x: x - 1, y: y });
+                        pixelStack.push({ x: x, y: y + 1 });
+                        pixelStack.push({ x: x, y: y - 1 });
+                    }
+                }
+
+                context.putImageData(imageData, 0, 0);
+            }
+
+            // Function to get pixel color at coordinates (x, y)
+            function getPixelColor(x, y) {
+                const pixelIndex = (y * canvas.width + x) * 4;
+                const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+                const rgba = {
+                    r: pixels[pixelIndex],
+                    g: pixels[pixelIndex + 1],
+                    b: pixels[pixelIndex + 2],
+                    a: pixels[pixelIndex + 3]
+                };
+                return `rgba(${rgba.r},${rgba.g},${rgba.b},${rgba.a})`;
+            }
+
+            // Function to set pixel color at coordinates (x, y)
+            function setPixelColor(x, y, color, pixels) {
+                const pixelIndex = (y * canvas.width + x) * 4;
+                pixels[pixelIndex] = parseInt(color.slice(1, 3), 16); // red
+                pixels[pixelIndex + 1] = parseInt(color.slice(3, 5), 16); // green
+                pixels[pixelIndex + 2] = parseInt(color.slice(5, 7), 16); // blue
+                pixels[pixelIndex + 3] = 255; // alpha
+            }
+
+            // Undo function
+            window.undo = function() {
+                if (paths.length > 1) {
+                    undonePaths.push(paths.pop()); // Move current path to undone paths
+                    context.putImageData(paths[paths.length - 1], 0, 0); // Redraw canvas with previous path
+                }
+            };
+
+            // Clear canvas function
+            window.clearCanvas = function() {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                paths = []; // Clear paths array
+                undonePaths = []; // Clear undone paths array
+            };
+
+            // Download function
+            window.download = function() {
+                const link = document.createElement('a');
+                link.download = 'drawing.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            };
+
+            // Upload image function
+            window.uploadImage = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        context.clearRect(0, 0, canvas.width, canvas.height);
+                        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
